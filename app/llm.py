@@ -1,14 +1,8 @@
 import json
-import os
 from typing import Any
 
-from dotenv import load_dotenv
-from openai import OpenAI
-
+from app.client import create_client
 from app.tools import search_web
-
-
-load_dotenv()
 
 MAX_AGENT_STEPS = 6
 
@@ -46,7 +40,7 @@ def ask_agent(question: str) -> str:
     if not question.strip():
         return "请输入一个具体的研究问题。"
 
-    client, model = _create_client()
+    client, model = create_client()
 
     messages = [
         {
@@ -110,18 +104,6 @@ def ask_agent(question: str) -> str:
     )
     response = client.chat.completions.create(model=model, messages=messages)
     return response.choices[0].message.content or "研究未能在步数限制内完成。"
-
-
-def _create_client() -> tuple[OpenAI, str]:
-    api_key = os.getenv("API_KEY")
-    model = os.getenv("MODEL")
-    if not api_key:
-        raise RuntimeError("缺少环境变量 API_KEY。")
-    if not model:
-        raise RuntimeError("缺少环境变量 MODEL。")
-
-    base_url = os.getenv("BASE_URL") or None
-    return OpenAI(api_key=api_key, base_url=base_url), model
 
 
 def _execute_tool(tool_call: Any, seen_queries: set[str]) -> str:
