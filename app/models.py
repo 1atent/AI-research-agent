@@ -40,17 +40,6 @@ class Evidence:
 
 
 @dataclass
-class ResearchState:
-    """Agent 当前的完整运行状态。"""
-
-    plan: ResearchPlan
-    evidence: list[Evidence] = field(default_factory=list)
-    searched_queries: set[str] = field(default_factory=set)  # 已经搜索过的关键词
-    step_count: int = 0  # Agent 已经执行的步数
-    status: ResearchStatus = ResearchStatus.PLANNING
-
-
-@dataclass
 class EvaluationResult:
     """Evaluator 对当前研究进度的检查结果。"""
 
@@ -59,3 +48,15 @@ class EvaluationResult:
     missing_sub_questions: list[str] = field(default_factory=list)  # 缺失的子问题
     next_query: str | None = None  # 下一次搜索的关键词
     reason: str = ""
+
+
+@dataclass
+class ResearchState:
+    """Agent 当前的完整运行状态。"""
+
+    plan: ResearchPlan
+    evidence: list[Evidence] = field(default_factory=list)
+    searched_queries: set[str] = field(default_factory=set)  # 已经搜索过的关键词
+    step_count: int = 0  # Agent 已经执行的步数
+    status: ResearchStatus = ResearchStatus.PLANNING
+    last_evaluation: EvaluationResult | None = None
