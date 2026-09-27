@@ -52,8 +52,13 @@ def search_web(query: str, max_results: int = 5) -> str:
     except requests.JSONDecodeError:
         return _json_result(ok=False, error="Tavily 返回了无法解析的响应。")
 
+    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+        return _json_result(ok=False, error="Tavily 返回了无效的搜索结果结构。")
+
     results: list[dict[str, Any]] = []
     for item in payload.get("results", []):
+        if not isinstance(item, dict):
+            continue
         results.append(
             {
                 "title": item.get("title", ""),

@@ -52,6 +52,7 @@ class ParseEvaluationTests(unittest.TestCase):
 
         self.assertEqual(result.status, EvaluationStatus.CONTINUE)
         self.assertEqual(result.missing_sub_questions, ["q1", "q2"])
+        self.assertEqual(result.error, "invalid_json")
 
 
 class EvaluateResearchTests(unittest.TestCase):

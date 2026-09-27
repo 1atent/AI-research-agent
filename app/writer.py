@@ -3,6 +3,7 @@ import re
 
 from openai import OpenAI
 
+from app.evidence import evidence_excerpt, select_evidence
 from app.models import Evidence, ResearchState
 
 
@@ -31,7 +32,11 @@ def write_report(
     model: str,
 ) -> str:
     """Generate a report and deterministically attach trusted source URLs."""
+    state.report_generated = False
     selected = _select_evidence(state)
+    state.report_source_urls = {
+        f"S{index}": item.url for index, item in enumerate(selected, start=1)
+    }
     if not selected:
         return "未获得可用证据，无法生成研究报告。"
 
@@ -46,6 +51,10 @@ def write_report(
                     {
                         "question": state.plan.question,
                         "status": state.status.value,
+                        "stop_reason": state.stop_reason.value if state.stop_reason else None,
+                        "source_count": len(state.evidence),
+                        "minimum_sources": state.plan.minimum_sources,
+                        "evaluation_reason": evaluation.reason if evaluation else "",
                         "sub_questions": state.plan.sub_questions,
                         "missing_sub_questions": (
                             evaluation.missing_sub_questions if evaluation else []
@@ -54,7 +63,7 @@ def write_report(
                             {
                                 "source_id": f"S{index}",
                                 "title": item.title,
-                                "content": item.content[:MAX_EVIDENCE_CHARS],
+                                "content": evidence_excerpt(item, MAX_EVIDENCE_CHARS),
                             }
                             for index, item in enumerate(selected, start=1)
                         ],
@@ -68,38 +77,13 @@ def write_report(
     if not content:
         return "模型未返回研究报告。"
 
+    state.report_generated = True
     report = _attach_source_links(content, selected)
     return f"{report.rstrip()}\n\n{_source_list(selected)}"
 
 
 def _select_evidence(state: ResearchState) -> list[Evidence]:
-    ranked = sorted(
-        state.evidence,
-        key=lambda item: item.score if item.score is not None else -1.0,
-        reverse=True,
-    )
-    selected: list[Evidence] = []
-
-    # Reserve coverage for every sub-question before filling remaining slots by score.
-    for question in state.plan.sub_questions:
-        candidate = next(
-            (
-                item
-                for item in ranked
-                if question in item.supports and item not in selected
-            ),
-            None,
-        )
-        if candidate is not None:
-            selected.append(candidate)
-
-    for item in ranked:
-        if item not in selected:
-            selected.append(item)
-        if len(selected) == MAX_REPORT_SOURCES:
-            break
-
-    return selected[:MAX_REPORT_SOURCES]
+    return select_evidence(state, MAX_REPORT_SOURCES)
 
 
 def _attach_source_links(content: str, evidence: list[Evidence]) -> str:

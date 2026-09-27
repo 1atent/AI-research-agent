@@ -2,6 +2,7 @@ import json
 
 from openai import OpenAI
 
+from app.evidence import count_unique_sources, evidence_excerpt, select_evidence
 from app.models import (
     EvaluationResult,
     EvaluationStatus,
@@ -19,7 +20,9 @@ EVALUATOR_SYSTEM_PROMPT = """
 4. answered_sub_questions 和 missing_sub_questions 必须原样复制输入中的子问题，不要改写。
 5. 如果存在缺口，status 必须是 continue，并提供一个具体、不重复的 next_query。
 6. 所有子问题都有证据支持时，status 才能是 complete。
-7. 只返回 JSON，不要返回 Markdown 或额外解释。
+7. 查询应避开 searched_queries 中已经执行过的检索词。
+8. 来源数量由程序检查；完整覆盖所有子问题才可返回 complete。
+9. 只返回 JSON，不要返回 Markdown 或额外解释。
 
 输出格式：
 {
@@ -52,6 +55,8 @@ def evaluate_research(
                         "question": state.plan.question,
                         "sub_questions": state.plan.sub_questions,
                         "minimum_sources": state.plan.minimum_sources,
+                        "source_count": count_unique_sources(state),
+                        "searched_queries": sorted(state.searched_queries),
                         "evidence": _evidence_for_evaluation(state),
                     },
                     ensure_ascii=False,
@@ -61,7 +66,7 @@ def evaluate_research(
     )
     content = response.choices[0].message.content
     if not content:
-        return _fallback_evaluation(state, "评估模型未返回内容。")
+        return _fallback_evaluation(state, "评估模型未返回内容。", "empty_response")
     return parse_evaluation(content, state)
 
 
@@ -70,10 +75,10 @@ def parse_evaluation(content: str, state: ResearchState) -> EvaluationResult:
     try:
         payload = json.loads(_remove_markdown_fence(content))
     except (json.JSONDecodeError, TypeError):
-        return _fallback_evaluation(state, "评估模型返回了非法 JSON。")
+        return _fallback_evaluation(state, "评估模型返回了非法 JSON。", "invalid_json")
 
     if not isinstance(payload, dict):
-        return _fallback_evaluation(state, "评估结果不是 JSON 对象。")
+        return _fallback_evaluation(state, "评估结果不是 JSON 对象。", "invalid_schema")
 
     question_by_key = {
         question.strip().casefold(): question
@@ -121,7 +126,9 @@ def parse_evaluation(content: str, state: ResearchState) -> EvaluationResult:
     )
 
 
-def _fallback_evaluation(state: ResearchState, reason: str) -> EvaluationResult:
+def _fallback_evaluation(
+    state: ResearchState, reason: str, error: str | None = None
+) -> EvaluationResult:
     next_query = (
         state.plan.sub_questions[0]
         if state.plan.sub_questions
@@ -133,6 +140,7 @@ def _fallback_evaluation(state: ResearchState, reason: str) -> EvaluationResult:
         missing_sub_questions=list(state.plan.sub_questions),
         next_query=next_query,
         reason=reason,
+        error=error,
     )
 
 
@@ -140,11 +148,11 @@ def _evidence_for_evaluation(state: ResearchState) -> list[dict[str, object]]:
     return [
         {
             "title": item.title,
-            "content": item.content[:1200],
+            "content": evidence_excerpt(item),
             "score": item.score,
             "candidate_supports": item.supports,
         }
-        for item in state.evidence[:20]
+        for item in select_evidence(state, 20)
     ]
 
 

@@ -50,6 +50,8 @@ class WriteReportTests(unittest.TestCase):
         self.assertIn("[Trusted Source](https://example.com/trusted)", report)
         self.assertNotIn("https://evil.example", report)
         self.assertIn("## 参考来源", report)
+        self.assertEqual(state.report_source_urls, {"S1": "https://example.com/trusted"})
+        self.assertTrue(state.report_generated)
 
 
 if __name__ == "__main__":
